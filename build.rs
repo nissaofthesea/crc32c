@@ -2,16 +2,14 @@ extern crate rustc_version;
 
 use rustc_version::{version_meta, Channel};
 use std::path::Path;
-use std::{io, mem, ops};
+use std::{io, ops};
 
 /// CRC-32-Castagnoli polynomial in reversed bit order.
 pub const POLYNOMIAL: u32 = 0x82_F6_3B_78;
 
 /// Table for a quadword-at-a-time software CRC.
 fn sw_table() -> [[u32; 256]; 8] {
-    // SAFETY: MaybeUninit doesn't have to be initialized
-    let mut table: [[mem::MaybeUninit<u32>; 256]; 8] =
-        unsafe { mem::MaybeUninit::uninit().assume_init() };
+    let mut table: [[u32; 256]; 8] = [[0; 256]; 8];
     for n in 0..256 {
         let mut crc = n;
 
@@ -24,20 +22,18 @@ fn sw_table() -> [[u32; 256]; 8] {
             }
         }
 
-        table[0][n as usize].write(crc);
+        table[0][n as usize] = crc;
     }
 
     for n in 0..256 {
-        // SAFETY: all values in table[0] are initialized in the previous loop
-        let mut crc = unsafe { table[0][n as usize].assume_init() };
+        let mut crc = table[0][n as usize];
         for k in 1..8 {
-            crc = unsafe { table[0][(crc as u8) as usize].assume_init() } ^ (crc >> 8);
-            table[k as usize][n as usize].write(crc);
+            crc = table[0][(crc as u8) as usize] ^ (crc >> 8);
+            table[k as usize][n as usize] = crc;
         }
     }
 
-    // SAFETY: all values are initialized
-    unsafe { mem::transmute(table) }
+    table
 }
 
 /// A matrix over the Galois field of two elements (0 and 1).
@@ -135,20 +131,17 @@ fn create_zero_operator(mut len: usize) -> Matrix {
 }
 
 fn hw_table(len: usize) -> [[u32; 256]; 4] {
-    // SAFETY: MaybeUninit doesn't have to be initialized
-    let mut zeroes: [[mem::MaybeUninit<u32>; 256]; 4] =
-        unsafe { mem::MaybeUninit::uninit().assume_init() };
+    let mut zeroes: [[u32; 256]; 4] = [[0; 256]; 4];
     let op = create_zero_operator(len);
 
     for n in 0..256 {
         for i in 0..4 {
             let shift = i * 8;
-            zeroes[i as usize][n].write(op * ((n << shift) as u32));
+            zeroes[i as usize][n] = op * ((n << shift) as u32);
         }
     }
 
-    // SAFETY: all values are initialized in the previous nested loops
-    unsafe { mem::transmute(zeroes) }
+    zeroes
 }
 
 // LONG/SHORT VALUES MUST BE SYNCHRONIZED WITH src/tables.rs
